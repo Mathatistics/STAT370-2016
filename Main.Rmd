@@ -251,7 +251,7 @@ Results from ANOVA, plotted in figure - 11, was expected since the MCUVE method 
 On this comparison of variable selection methods, we found that there is no significance difference in variable selection methods apart from MCUVE which is rather conservative in selecting variables. However, the methods can perform differently according the nature of data. So, it is desirable to test the performance of variable selection before implementing them on any analysis.
 
 # Code Used
-All the codes used can be found on my `github` [repository](http://facebook.com).
+All the codes used can be found on my `github` [repository](https://github.com/RimalayaN/STAT370).
 
 
 
