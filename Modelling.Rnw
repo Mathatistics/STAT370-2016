@@ -1,0 +1,198 @@
+% !Rnw root = Main.Rnw
+
+\section{Statistical Models}
+
+\subsection{Principal Component Analysis (PCA)}
+PCA enables the underlying structure present in a dataset by transforming variables into a new set of uncorrelated variables. PCA is used to reduce the dimension of dataset consisting of correlated variables, retaining most of the variation present in it on first few PCs.
+  
+In this study, the first and second principal components are plotted, in figure - \ref{fig:scorePlots} (top-left), which are linear combinations of original variables. The PC of MALDI-TOF are colored according to milk proportion of cow, goat and ewe which revels clusters present in the mass-spectra at three different corners. A similar grouping is visible on gene expression data in fig-\ref{fig:scorePlots} (top-right) where the points are colored according to there state of having tumor or not.
+
+Further, the principal components of NIR and Raman datasets in figure - \ref{fig:scorePlots} (bottom) shows that higher concentration of PUFA are separated by first principal component in NIR and second principal component in Raman dataset.
+
+<<PCA, fig.height=2>>=
+pca <- list()
+pca$milk <- prcomp(data$milk$MS)
+pca$raman <- prcomp(data$nir$Raman)
+pca$NIR <- prcomp(data$nir$NIR)
+pca$gene <- prcomp(data$gene$GeneExpr)
+@
+
+<<screePlot, eval = FALSE>>=
+pcaPlots <- lapply(names(pca), function(x){
+  plotPCA(pca[[x]], npcs = 20, title = x, base.size = 8)
+})
+do.call(gridExtra::grid.arrange, `$<-`(pcaPlots, ncol, 4))
+@
+
+<<scorePlots, fig.height=4.5, fig.cap='Principal components of (top-left) MALDI-TOF dataset with colored proportion of cow, goat and ewe milk, (top-right) Gene Expression dataset with presence and absense of tumer on the sample, (bottom) NIR and Raman dataset with opacity factor with percentage of (left) PUFA in total sample and (right) PUFA in total fat content', fig.show='H'>>=
+pca.scoreplot <- pca.score <- list()
+pca.score$Milk <- melt(data.table(pca$milk$x[, 1:2], unclass(MALDITOF_Milk$milk)), 1:2)
+pca.score$Gene <- melt(data.table(pca$gene$x[, 1:2], tumor = as.factor(GeneExpr_Prostate$tumor)), 1:2)
+pca.score$NIR <- melt(data.table(pca$NIR$x[, 1:2], unclass(NIR_Raman_PUFA$PUFA)), 1:2)[, .(PC1, PC2, value = value/max(value)), by = variable]
+pca.score$Raman <- melt(data.table(pca$raman$x[, 1:2], unclass(NIR_Raman_PUFA$PUFA)), 1:2)[, .(PC1, PC2, value = value/max(value)), by = variable]
+
+pca.scoreplot <- lapply(names(pca.score), function(i){
+  if (i == "Milk") {
+    mapping <- aes(PC1, PC2, fill = variable, alpha = value)
+    my_point <- geom_point(shape = 21)
+  } else if (i == "Gene") {
+    mapping <- aes(PC1, PC2, fill = as.factor(value))
+    my_point <- geom_point(shape = 21)
+  } else {
+    mapping <- aes(PC1, PC2, alpha = value)
+    my_point <- geom_point(shape = 21, fill = "gray")
+  }
+  plt <- ggplot(pca.score[[i]], mapping) + 
+    my_point +
+    scale_alpha_continuous(breaks = NULL) +
+    theme(legend.position = "top", legend.title = element_blank()) +
+    ggtitle(paste('Scoreplot for', i, 'dataset')) +
+    theme(title = element_text(size = rel(0.9)))
+  if (i == "NIR" | i == "Raman") {
+    plt <- plt + facet_grid(.~variable)
+  }
+  return(plt)
+})
+
+do.call(gridExtra::grid.arrange, `$<-`(`$<-`(pca.scoreplot, 'ncol', 2), 'heights', c(3,2)))
+@
+
+\subsection{Calibration and Validation}
+Model validation ensures how the model will perform on completely new environment, i.e. with observations on included for its calibration. For \textit{external validity}\footnote{\cite[ch.10]{martens2001multivariate}}, datasets are splitted into training and test sets with 70 percent of observations taken as training set while rest as test set. However, due to replications, MALDI-TOF milk data is splitted into 3:2 ratio such that the replications are bind together. An \textit{internal validation}\footnote{\cite[ch.10]{martens2001multivariate}} is done on the training set with 10 fold random cross-validation except on MALDI-TOF milk. On MALDI-TOF data a consecutive splitting is made with 30 folds which hence ensure each set of replication creates a fold. Further, the models calibrated with cross-validation from training set are used for predicting test set.
+
+\subsection{Partial Least Square (PLS) Regression}
+PLS uses the latent structure for modeling the relation between matrices $\mathbf{X}$ and $\mathbf{Y}$. Latent variables of both $\mathbf{X}$ and $\mathbf{Y}$ are modeled to explain the variance structure (direction) present in $\mathbf{Y}$. Flawless performance on wide matrices (where variables are more than observations) and correction of multicollinearity are the advantages of Partial Least Square Regression.
+
+
+<<DataSplit>>=
+data$gene <- splitMe(data$gene, 0.7)
+data$raman <- data$nir <- splitMe(data$nir, 0.7)
+data$milk$train <- ifelse(1:nrow(data$milk) <= 120, TRUE, FALSE)
+xy.info <- list(
+  c(x = 'MS', y = "milk"), c(x = 'NIR', y = 'PUFA'), c(x = 'GeneExpr', y = 'tumor'), c(x = 'Raman', y = 'PUFA')
+)
+names(xy.info) <- names(data)
+@
+
+<<Model_Fitting>>=
+if (file.exists('robjects/fittedModels.rdata')) {
+  load('robjects/fittedModels.rdata')
+} else {
+  pls <- list()
+  ## Initilizing Parallel
+  pls.options(parallel = 6)
+  
+  ## PLS model for Milk dataset
+  pls$milk <- lapply(colnames(data$milk$milk), function(rsp){
+      plsr(milk[, rsp] ~ MS, data = data$milk[data$milk$train, ], 
+             validation = "CV", segments = 30, segment.type = "consecutive", 
+             jackknife = TRUE)
+  })
+  names(pls$milk) <- colnames(data$milk$milk)
+  
+  ## PLS model for NIR dataset
+  pls$nir <- lapply(colnames(data$nir$PUFA), function(rsp){
+      plsr(PUFA[, rsp] ~ NIR, data = data$nir[data$nir$train, ], 
+           validation = "CV", jackknife = TRUE)
+  
+  })
+  
+  ## PLS model for Raman dataset
+  pls$raman <- lapply(colnames(data$raman$PUFA), function(rsp){
+      plsr(PUFA[, rsp] ~ Raman, data = data$raman[data$raman$train, ], 
+           validation = "CV", jackknife = TRUE)
+  })
+  names(pls$nir) <- names(pls$raman) <- colnames(data$nir$PUFA)
+}
+
+if (file.exists("robjects/gene.rdata")) {
+  load("robjects/gene.rdata")
+} else {
+  gene <- list()
+  
+  gene$plda <- plda(data$gene$GeneExpr[data$gene$train,],
+                    cat.resp = data$gene$tumor[data$gene$train],
+                    fn = 'plsr', fitComp = 25,
+                    split = 10)
+  
+  gene$r2 <- classR2(gene$plda, 
+          newX = data$gene$GeneExpr[!data$gene$train,],
+          newY = data$gene$tumor[!data$gene$train], ncomp = 25)
+  
+  # Variables Selection --------------------------------------------------------
+  opt.comp <- unique(gene$r2$max.correct.prop$comp)
+  
+  ## VIP Method (vip > 1)
+  gene$subset$vip <- VIP(gene$plda, opt.comp = opt.comp)
+  gene$subvaridx$vip <- as.numeric(which(gene$subset$vip > 1))
+  gene$submodel$vip <- plda(data$gene$GeneExpr[data$gene$train, gene$subvaridx$vip],
+                    cat.resp = data$gene$tumor[data$gene$train],
+                    fn = 'plsr', fitComp = opt.comp,
+                    split = 10)
+  gene$sub_r2$vip <- classR2(gene$submodel$vip, 
+          newX = data$gene$GeneExpr[!data$gene$train, gene$subvaridx$vip],
+          newY = data$gene$tumor[!data$gene$train], ncomp = opt.comp)
+  
+  ## MCUV-PLS Method
+  gene$subset$mcuv <- mcuve_pls(data$gene$tumor[data$gene$train],
+                           data$gene$GeneExpr[data$gene$train,],
+                           ncomp = opt.comp)
+  gene$subvaridx$mcuv <- gene$subset$mcuv[[1]]
+  gene$submodel$mcuv <- plda(data$gene$GeneExpr[data$gene$train, gene$subvaridx$mcuv],
+                    cat.resp = data$gene$tumor[data$gene$train],
+                    fn = 'plsr', fitComp = opt.comp,
+                    split = 10)
+  gene$sub_r2$mcuv <- classR2(gene$submodel$mcuv, 
+          newX = data$gene$GeneExpr[!data$gene$train, gene$subvaridx$mcuv],
+          newY = data$gene$tumor[!data$gene$train], ncomp = opt.comp)
+  
+  ## Shaving Method
+  gene$subset$shaving <- shaving(data$gene$tumor[data$gene$train],
+                           data$gene$GeneExpr[data$gene$train,],
+                           ncomp = opt.comp, method = "sMC")
+  gene$subvaridx$shaving <- gene$subset$shaving$variables[
+    which.min(gene$subset$shaving$error)][[1]]
+  gene$submodel$shaving <- plda(data$gene$GeneExpr[data$gene$train, gene$subvaridx$shaving],
+                    cat.resp = data$gene$tumor[data$gene$train],
+                    fn = 'plsr', fitComp = opt.comp,
+                    split = 10)
+  gene$sub_r2$shaving <- classR2(gene$submodel$shaving, 
+          newX = data$gene$GeneExpr[!data$gene$train, gene$subvaridx$shaving],
+          newY = data$gene$tumor[!data$gene$train], ncomp = opt.comp)
+  
+  
+  ## Truncated Method
+  gene$submodel$truncation <- plda(data$gene$GeneExpr[data$gene$train,],
+                    cat.resp = data$gene$tumor[data$gene$train],
+                    fn = 'truncation', fitComp = 25,
+                    split = 10, truncation = "Lenth", trunc.width = 0.95)
+  
+  gene$sub_r2$truncation <- classR2(gene$submodel$truncation, 
+                                    data$gene$GeneExpr[!data$gene$train, ], 
+                                    newY = data$gene$tumor[!data$gene$train], 
+                                    ncomp = opt.comp)
+}
+
+@
+
+<<Validation>>=
+if (file.exists("robjects/fittedModels.rdata")) {
+  load("robjects/fittedModels.rdata")
+} else {
+  r2 <- lapply(names(pls), function(mdls){
+      getValidation(pls[[mdls]], newdata = data[[mdls]][!data[[mdls]]$train, ])
+  })
+  names(r2) <- names(pls)  
+}
+@
+
+<<ValidationPlots, fig.height=4.5, results='hide', fig.cap="Maximum variation explained on response in Milk, NIR and Raman dataset and maximium correct classification proportion for gene Expression dataset. Each line represent a model for which the R2 predicted is calculated with number of components chosen by cross-validation (end of each line).", fig.pos='H'>>=
+plt.list <- lapply(names(r2), function(x){
+  plot(r2[[x]], full = FALSE) + ggtitle(toupper(x)) + theme(title = element_text(size = 7))
+})
+plot_grid(plotlist = plt.list, align = 'v', nrow = 2)
+@
+
+A PLS model with cross-validation is fitted on training set of all the datasets with individual responses (i.e. one response per model). A measure of maximum $R^2$ predicted is used as a validation tool. The number of components, needed for explaining most of the variation present in the response, obtained from cross-validation is used for test prediction. For classification of tumor or non-tumor in Gene Expression dataset, a modified PLS model is used where the scores from PLS model, with number of components needed for minimum RMSECV, is used as predictor variable in Linear Discriminant Analysis (LDA) model. A final model, with maximum average correct classification proportion, is used to predict the test set.
+
+Mostly, the variation explained in test are smaller than cross-validation in fig - \ref{fig:ValidationPlots} while on few of them it is larger than cross-validation. Plots from spectroscopic data shows that NIR data are able to explain \textit{PUFA present in total} better than Raman while Raman is better is explaining \textit{PUFA in fat}. Since number of components from cross-validation are used, the model fitted for goat response in MALDI-TOF data has 70 components and is performing poor in test data for which the presence of noise with inclusion of more components may be the reason behind.  However, in all the cases, more than 65\% of the variation on test is explained by the chosen PLS model.

@@ -1,0 +1,85 @@
+\documentclass[10pt, a4paper]{article}
+<<frontMatter, child='FrontMatters.Rnw'>>=
+@
+
+\begin{document}
+\begin{titlepage}
+\maketitle
+\tableofcontents
+\thispagestyle{empty}
+\end{titlepage}
+
+\section{Introduction}
+Simple and informative models is always preferred to complex model. Different variable selection techniques are compared on the basis of their performance on various nature of data. Table-\ref{tbl:data-n-nature} presents an overview of the datasets used in this study. All the data are pre-processed using different techniques such as baseline correction and smoothing before they are used in this study.
+
+<<dataset_desc, results='asis'>>=
+dataDesc <- data.table(
+  Datasets = paste0('\\texttt{', c('MALDITOF\\_Milk', 'NIR\\_Raman\\_PUFA', 'GeneExpr\\_Prostate'),'}'),
+  Types = c('Spectrometric', 'Spectroscopic', 'Microarray'),
+  `Response Variables` = paste0('\\texttt{', c(paste('cow', 'goat', 'ewe', sep = ', '), 
+                                              paste('PUFA\\_total', 'PUFA\\_fat', sep = ', '), 
+                                              'tumor'), '}'),
+  `Predictor Variables` = c(
+    "Mass Spectra (\\texttt{MS})", "\\texttt{NIR} and \\texttt{Raman}", "Gene Expression (\\texttt{GeneExpr})"
+  )
+)
+
+print.xtable(xtable(dataDesc, align = 'llllX', caption = "Overview of Datasets", 
+                    label = 'tbl:data-n-nature'), include.rownames = FALSE, 
+             tabular.environment = "tabularx", width = '0.9\\textwidth',
+             sanitize.text.function = function(x) {x}, size = 'small', table.placement = 'H')
+@
+
+\textbf{MALDI-TOF (Matrix-assisted laser ionization - Time of Flight)} is a mass spectrometric technique known for identifying proteins, peptides and some other ionisable compounds in samples, as explained in \citet{liland2009quantitative} and \citet{} (Fig: \ref{fig:samplePlot}; top-left). 
+
+<<samplePlot, fig.height=3.8, fig.cap="Sample observations from a) MALDI-TOF (top-left) b) NIR (top-right) c) Raman (bottom-left) and d) GeneExpression (bottom-right)", fig.pos='H'>>=
+plts <- list(
+  getSeries(MALDITOF_Milk$MS, nsamp = 5, title = "MALDI-TOF milk dataset"),
+  getSeries(NIR_Raman_PUFA$NIR, nsamp = 5, title = "NIR dataset"),
+  getSeries(NIR_Raman_PUFA$Raman, nsamp = 5, title = "Raman dataset"),
+  getSeries(GeneExpr_Prostate$GeneExpr, nsamp = 5, title = "Gene Expression dataset")
+)
+do.call(gridExtra::grid.arrange, plts)
+@
+
+\textbf{Near Infrared (NIR)} and \textbf{Raman} are spectroscopic techniques where the frequencies of reflected light from a vibrating molecules are measured. In the case of Raman spectroscopy, measurement is made only on raman shift, it is able to detect wider range of molecules than NIR (Fig: \ref{fig:samplePlot}; top-right and bottom-left). Here, the techniques are used to measure the percentage of polyunsaturated fatty acids in a) total sample weight b) total fat content (\cite{naes2013multi}). \textbf{Gene Expression} is a microarray data which contains a Gene Expression Matrix and a response vector which identify whether the sample contains tumor or not. A raw microarray data are images which are transformed into gene expression matrix that contains gene for each sample (fig-\ref{fig:samplePlot} (bottom-right)).
+
+<<varsel_desc, results='asis', eval = F>>=
+varSelDesc <- data.table(
+  Methods = c('Jack Knife', '\\texttt{mcuv}', 'Shaving (\\texttt{sMC})','Truncation'),
+  Types = c('Filter', 'Wrapper', 'Wrapper', 'Embeded'),
+  `Description` = c(
+    'Jack Knifing is used for variable selection where variables having p-value less than 0.05 are only selected.',
+    'Predictor variables having lower ``importance" than the artificial noise added to the predictors set are eliminated before model fitting. The process is repeated until a criterion is attained.',
+    'Variables are sorted with respect to some importance measure using \\texttt{sMC} from which least informative variables are eliminated using a threshold value. A model is fitted again with remaining variables and the procedure is repeated until maximum model performance is achieved.',
+    'During the model fitting, based on confidence interval for modeling, loading weights are truncated around their median before returning to the NIPALS algorithm again.'
+  )
+)
+
+varSelDesc.xtbl <- xtable(varSelDesc, align = 'lllX', caption = "Variable Selection Methods (\\cite{mehmood2012review})", label = 'tbl:varsel-method')
+print.xtable(varSelDesc.xtbl, include.rownames = FALSE, 
+             tabular.environment = "tabularx", width = '0.9\\textwidth',
+             sanitize.text.function = function(x) {x}, size = 'small', 
+             table.placement = 'H', hline.after = c(-1, 0, 0:nrow(varSelDesc)))
+@
+
+
+<<modelling, child='Modelling.Rnw'>>=
+@
+
+<<classification, child='Classification.Rnw'>>=
+@
+
+<<variableSelection, child='VariableSelection.Rnw'>>=
+@
+
+<<AnalysisDiscussion, child='AnalysisDiscussion.Rnw'>>=
+@
+
+\appendix
+<<codeUsed, child='CodeUsed.Rnw'>>=
+@
+
+
+\printbibliography
+\end{document}

@@ -1,0 +1,52 @@
+% !Rnw root = Main.Rnw
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{mathpazo}
+\usepackage{setspace}
+\usepackage{tabularx}
+\usepackage{float}
+\usepackage[natbib=true, backend=bibtex, style=numeric, citestyle=authoryear]{biblatex}
+\usepackage{pgf, tikz}
+\usepackage{listings}
+\usepackage{color}
+\usepackage{multicol}
+\usepackage[font=small,labelfont=sf, font=sf]{caption}
+\usepackage{subcaption}
+
+\usetikzlibrary{positioning, shapes, fit, chains}
+\addbibresource{references.bib}
+
+% Some Customizations
+\onehalfspacing
+
+\title{A compariative study of variable selection methods on diverse nature of data \\ \vspace{0.5cm}
+\Large{Compulsory Assignment (STAT 370)}}
+
+\author{Raju Rimal}
+
+\setcounter{secnumdepth}{0}
+
+
+<<loadPackage, echo = FALSE, message=FALSE, warning=FALSE>>=
+req.pkgs <- c('pls', 'MASS', 'plsVarSel', 'data.table', 'ggplot2', 'reshape2', 'plyr', 'dplyr', 'xtable', 'cowplot', 'nlme', 'mixlm')
+invisible(lapply(req.pkgs, require, character.only = TRUE))
+theme_set(theme_bw(10))
+@
+<<knitrSetup, include=FALSE, purl = FALSE>>=
+knitr::opts_chunk$set(echo = FALSE, comment = NA, size = 'small', fig.height = 4, fig.pos = 'H')
+@
+<<dataLoad>>=
+load('Data/MALDITOF_Milk.RData')
+load('Data/GeneExpr_Prostate.RData')
+load('Data/NIR_Raman_PUFA.RData')
+GeneExpr_Prostate <- GeneExpr_Prostate[GeneExpr_Prostate$train,]
+GeneExpr_Prostate <- within(GeneExpr_Prostate, {
+  colnames(GeneExpr) <- 1:ncol(GeneExpr)
+  rownames(GeneExpr) <- 1:nrow(GeneExpr)
+})
+data <- list(milk = MALDITOF_Milk, nir = NIR_Raman_PUFA, gene = GeneExpr_Prostate)
+
+source('funScript/basicFun.R')
+source("funScript/plda.R")
+@

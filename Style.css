@@ -1,0 +1,154 @@
+#header{
+  padding-top: 75px;
+}
+
+.title, .author, .date, .text-center{
+  text-align: center;
+}
+.author{
+  padding-bottom: 20px;
+  margin-top: -15px!important;
+}
+.author em{
+  font-style: normal!important;
+  font-weight: normal!important;
+}
+
+.index-author{
+  padding: 12px;
+  font-size: xx-large;
+  font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;
+}
+
+body{
+  font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif;
+  line-height: 1.5;
+}
+h1, h2, h3, h4, h5, h6{
+  font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif!important;
+  padding-top: 10pt;
+}
+
+blockquote{
+  font-family:cursive;
+}
+
+.siteTitle{
+  font-family: sans-serif;
+  font-size: x-large;
+}
+
+.tocTable{
+  width: 80%;
+}
+.tocTable table{
+  text-transform: uppercase;
+  font-size: larger;
+  font-family: verdana, sans-serif;
+}
+.nav{
+  text-transform: uppercase;
+}
+.date{
+  padding-bottom: 25pt;
+}
+.main-container{
+  padding: 0 35pt;
+}
+.red{
+  color: red;
+  cursor: pointer;
+}
+.ans{
+  display:none;
+}
+
+.btn-xs{
+  padding: 4px 5px!important;  
+  line-height: 2!important;
+  border-radius: 0!important;
+  width: 15%;
+  float: right;
+}
+
+pre{
+  border-radius: 0!important;
+  margin-top: 10pt!important;
+  margin-bottom: 10pt!important;
+  font-size: smaller!important;
+}
+
+.screenshot{
+  display:table;
+}
+
+.screenshot img{
+  border:thin solid black;
+  margin: 5px;
+}
+
+.left{
+  float: left;
+  display: table-column;
+  width: 65%;
+}
+.right{
+  float: right;
+  display: table-column;
+  width: 32%;
+}
+.img-row{
+    display: table-row;
+}
+.dontprint{
+  margin-bottom:20px;
+  text-align: center;
+}
+
+.wrap-ans{
+  margin-top: -5px;
+	padding-bottom: 10px;
+}
+
+.fill{
+  min-height: 100%;
+  min-width: 100%;
+}
+
+.dropdown-menu{
+  width: -moz-max-content;
+  width: -webkit-max-content;
+  width: max-content;
+}
+
+.chMenuTitle{
+  margin-top:10px;
+  width:inherit;
+}
+
+.chMenuTitle p {
+    text-align:left;
+    font-size: medium;
+    padding-left: 20px;
+    padding-right: 15px;
+    font-weight: bolder;
+}
+
+@media print {
+  .no-print{
+    display:none;
+  }
+}
+
+.btn-ans{
+  cursor: pointer;
+}
+
+.btn-ans:hover,
+.btn-ans:focus{
+  text-decoration:none;
+}
+
+p.mycaption{
+  padding: 5pt 10pt 10pt 10pt;
+}

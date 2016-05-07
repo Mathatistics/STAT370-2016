@@ -1,0 +1,146 @@
+% !Rnw root = Main.Rnw
+\section{Variable Selection}
+<<Subset_Models>>=
+if (file.exists('robjects/SubModels.Rdata')) {
+  load('robjects/SubModels.Rdata')
+} else {
+  ## Initilize List
+  subset <- subvaridx <- subdata <- submodel <- sub_r2 <- list()
+  
+  ## Filter with VIP
+  subset$vip <- lapply(names(pls), function(dta, vald = r2){
+    mdls <- lapply(names(pls[[dta]]), function(mdl){
+      opt.comp <- vald[[dta]][[2]][response == mdl & estimate == "CV", comp]
+      vip <- VIP(pls[[dta]][[mdl]], opt.comp = opt.comp)
+      vip.idx <- as.numeric(which(vip > 1))
+      subdata <- within(data[[dta]], {assign(xy.info[[dta]][['x']], data[[dta]][, xy.info[[dta]]['x']][, vip.idx])})
+      subMdl <- update(pls[[dta]][[mdl]], . ~ ., data = subdata[subdata$train, ])
+      
+      ## Output (Export to respective List)
+      subvaridx$vip[[dta]][[mdl]] <<- vip.idx
+      subdata$vip[[dta]][[mdl]] <<- subdata
+      submodel$vip[[dta]][[mdl]] <<- subMdl
+      
+      return(vip)
+    })
+    names(mdls) <- names(pls[[dta]])
+    sub_r2$vip[[dta]] <<- getValidation(submodel$vip[[dta]], subdata$vip[[dta]])
+    return(mdls)
+  })
+  names(subset$vip) <- names(pls)
+  
+  ## Fitting mcuv_pls
+  subset$mcuv <- lapply(names(pls), function(dta, vald = r2){
+    mdls <- lapply(names(pls[[dta]]), function(mdl){
+      opt.comp <- vald[[dta]][[2]][response == mdl & estimate == "CV", comp]
+      mcuv.test <- mcuve_pls(data[[dta]][[xy.info[[dta]]["y"]]][, mdl], data[[dta]][[xy.info[[dta]]["x"]]])[[1]]
+      mcuv.idx <- mcuv.test
+      subdata <- within(data[[dta]], {assign(xy.info[[dta]][['x']], data[[dta]][, xy.info[[dta]]['x']][, mcuv.idx])})
+      subMdl <- update(pls[[dta]][[mdl]], . ~ ., data = subdata[subdata$train, ])
+      
+      ## Output (Export to respective List)
+      subvaridx$mcuv[[dta]][[mdl]] <<- mcuv.idx
+      subdata$mcuv[[dta]][[mdl]] <<- subdata
+      submodel$mcuv[[dta]][[mdl]] <<- subMdl
+      
+      return(mcuv.test)
+    })
+    names(mdls) <- names(pls[[dta]])
+    sub_r2$mcuv[[dta]] <<- getValidation(submodel$mcuv[[dta]], subdata$mcuv[[dta]])
+    return(mdls)
+  })
+  names(subset$mcuv) <- names(pls)
+  
+  ## Fitting shaving_pls
+  subset$shaving <- lapply(names(pls), function(dta, vald = r2){
+    mdls <- lapply(names(pls[[dta]]), function(mdl){
+      opt.comp <- vald[[dta]][[2]][response == mdl & estimate == "CV", comp]
+      shaving.test <- shaving(data[[dta]][[xy.info[[dta]]["y"]]][, mdl], data[[dta]][[xy.info[[dta]]["x"]]])
+      shaving.idx <- shaving.test$variables[which.min(shaving.test$error)][[1]]
+      
+      subdata <- within(data[[dta]], {assign(xy.info[[dta]][['x']], data[[dta]][, xy.info[[dta]]['x']][, shaving.idx])})
+      subMdl <- update(pls[[dta]][[mdl]], . ~ ., data = subdata[subdata$train, ])
+      
+      ## Output (Export to respective List)
+      subvaridx$shaving[[dta]][[mdl]] <<- shaving.idx
+      subdata$shaving[[dta]][[mdl]] <<- subdata
+      submodel$shaving[[dta]][[mdl]] <<- subMdl
+      
+      return(shaving.test)
+    })
+    names(mdls) <- names(pls[[dta]])
+    sub_r2$shaving[[dta]] <<- getValidation(submodel$shaving[[dta]], subdata$shaving[[dta]])
+    return(mdls)
+  })
+  names(subset$shaving) <- names(pls)
+  
+  ## Fitting truncation_pls
+  invisible(
+    lapply(names(pls), function(dta, vald = r2){
+      lapply(names(pls[[dta]]), function(rsp){
+        opt.comp <- vald[[dta]][[2]][response == rsp & estimate == "CV", comp]
+        mdl.call <- as.list(getCall(pls[[dta]][[rsp]]))
+        mdl.call[[1]] <- as.name("truncation")
+        mdl.call$truncation = "Lenth"
+        mdl.call$trunc.width = 0.95
+        mdl.call$ncomp = opt.comp
+        submodel$truncation[[dta]][[rsp]] <<- eval(as.call(mdl.call))
+      })
+      sub_r2$truncation[[dta]] <<- getValidation(submodel$truncation[[dta]], data[[dta]][!data[[dta]]$train, ])
+    })
+  )
+}
+@
+Variable selection techniques as suggested in \citet{mehmood2012review} are implemented on each dataset and a comparison is made with the model fitted with complete set. \citet{mehmood2012review} have categorized the variable selection technique into three different categories: Filter, Wrapper and Embedded methods (fig. - \ref{fig:varSelMethods}). 
+
+\begin{figure}[H]
+\begin{center}
+    \includegraphics[width=\textwidth]{figure/varSelMethods.png}
+\end{center}
+\caption{Illustration of Variation Selection Techniques}
+\label{fig:varSelMethods}
+\end{figure}
+
+\subsection{Filter Method}
+Filter method selects variables from a fitted PLS model introducing a threshold on some measure such as Loading Weights, Regression Coefficients and Variable Importance in Projection (VIP). VIP is used as a filter method in this study with a threshold value of 1. Since, only the important variables are selected and with reduced noise, in many occasions, PLS model fitted with only selected variables predicts better than the full Model. For instance, with cow milk as response in the case of MALDI-TOF model, figure - \ref{fig:VIPcowCompare} shows that the model from VIP filter with only \Sexpr{ncol(submodel$vip$milk$cow$model$MS)} variables, has explained more than the Full Model on both CV and testset.
+
+<<VIPcowCompare, fig.height=2.3, fig.width='\\textwidth', fig.cap='Comparison of Models with complete set of variables and variables obtained from VIP filter'>>=
+plt1 <- plotSeries(submodel$vip$milk$cow, pls$milk$cow, direction = 1, alpha = 0.75, ann.size = 3,
+                     modelName = c("VIP", "Fullmodel")) + theme(legend.title = element_blank())
+plt2 <- compareValidation(r2$milk, sub_r2$vip$milk, "cow", direction = 1) +
+  theme(legend.title = element_blank())
+grid_arrange_shared_legend(plt1, plt2, n.col = 2, width = c(4, 2))
+@
+
+\subsection{Wrapper Method}
+Wrapper Method uses filter method in an iterative way. MCUVE (Monte-Carlo based Uninformative Variable Elimination) and Shaving methods are used in this study. The comparison 
+
+\textbf{MCUVE} method is used which splits the sample set into test and train and runs random cross-validation on training and selects variables based on final performance test on test data. Despite decrease the risk of over-fitting (\cite{mehmood2012review}), MCUVE PLS adopted here has chosen very few variables resulting low R-Sq predicted in all nature of datasets.
+
+\textbf{Shaving} method (\cite{shavingCRAN}) first arrange the variables using some filter methods. A subset of least information variables are eliminated using a threshold value and a model is again fitted and model performance is measured. The procedure is repeated to achieve maximum model performance.
+
+<<ShavingMCUV, fig.height=2.5, fig.cap="(left) Variables selected on MALDI-TOF Milk Spectra data where goat is a response. (right) Maximum $R^2$ Predicted from model with variables selected from Fullmodel, MCUV, Shaving method.">>=
+plt1 <- compareValidation(r2$milk, 
+                          subModel_r2df = list(sub_r2$mcuv$milk, sub_r2$shaving$milk), 
+                          rsp = 'goat', direction = 1,
+                          mdl.names = c('MCUV', 'Shaving', 'Full Model'))
+plt2 <- plotSeries(submodel$shaving$milk$goat, pls$milk$goat, modelName = c("Shaving", "Fullmodel"), alpha = 0.85, ann.size = 2.5) + 
+  geom_point(data = melt(as.table(loadings(submodel$mcuv$milk$goat)[, 1])), 
+             aes(x = Var1, y = value, color = "MCUV"), size = 2)
+
+grid_arrange_shared_legend(plt2, plt1, n.col = 2, width = c(4, 2))
+@
+
+MCUV method is able to explain only 20\% of variation present in goat percent in the milk mixture of MALDI-TOF data (fig - \ref{fig:ShavingMCUV} (right)). Selection of few variables by the method has removed many more information which results in this poor performance. While the shaving method with less than 5000 variables has almost performed similarly as complete model with more than 6000 variables. The comparison between these methods will be performed on next section of this paper.
+
+\subsection{Embedded Method}
+
+Embedded Method integrate variable selection procedure in a single run of model fitting. Since the procedure is wrapped within PLS algorithm, it is less time consuming than wrapper method where double iteration occurs. Truncation, an embedded method, is used in this study where, loading weights are truncated around their median based on their confidence intervals. For Instance, in the case of MALDI-TOF milk data fitted for response \texttt{cow} and Gene Expression data (Figure - \ref{fig:truncPlot}), the loading weights closer to zero with 95\% confidence level around median are termed as uninformative and set to zero or truncated. For each additional components, the truncation method truncates more loading weights since the higher order components contains extra noise.
+
+<<truncPlot, fig.height=3, fig.cap='Histogram of Loading Weights for full and truncated model for (left) MALDI-TOF milk data with response cow (right) Gene Expression data. Corresponding inset shows the maximum R-sq predicted for train, CV and test.', message=FALSE, warning=FALSE, fig.pos="H">>=
+trunc.cow <- truncPlot(pls$milk$cow, submodel$truncation$milk$cow, bins = 1000, 
+                       newdata = data$milk[!data$milk$train, ], inset = T, invert = T)
+trunc.gene <- truncPlot(gene$plda, gene$submodel$truncation, bins = 1000, inset = T, invert = F) + 
+  coord_cartesian(xlim = c(-0.1, 0.35), ylim = c(0, 2500))
+grid_arrange_shared_legend(trunc.cow, trunc.gene, n.col = 2, width = c(5, 5))
+@

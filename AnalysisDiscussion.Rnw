@@ -1,0 +1,116 @@
+% !Rnw root = Main.Rnw
+
+\section{Analysis and Discussion}
+<<TransferGene>>=
+r2$gene <- gene$r2
+for (x in names(sub_r2)) {
+  sub_r2[[x]]$gene <- gene$sub_r2[[x]]
+}
+@
+<<MetaDataset>>=
+full.test.r2 <- setnames(rbindlist(lapply(r2, function(rsp){
+      rsp[[2]][estimate == "test"]
+  }), idcol = TRUE), '.id', "data")
+full.test.r2 <- cbind(method = "complete", full.test.r2)
+
+sub.test.r2 <- (setnames(rbindlist(lapply(sub_r2, function(mthd) {
+    setnames(rbindlist(lapply(mthd, function(rsp){
+        rsp[[2]][estimate == "test"]
+    }), idcol = TRUE), '.id', "data")
+}), idcol = TRUE), '.id', 'method'))
+
+test.r2 <- setnames(rbindlist(list(full = full.test.r2, subset = sub.test.r2), idcol = TRUE), '.id', 'type')
+test.r2[, c("method", "data") := list(as.factor(method), as.factor(data))]
+rm(full.test.r2, sub.test.r2)
+@
+<<NestedMixedModel>>=
+test.r2 <- setnames(rbindlist(
+  lapply(seq_along(dir("Reps")), function(idx){
+  rd <- dir("Reps")[idx]
+  load(file = file.path("Reps", rd), envir = .GlobalEnv)
+  return(test.r2)
+}), idcol = TRUE
+), ".id", "replicates")
+setnames(test.r2, "value", "rsq_pred")
+test.r2[, c('method', 'data', 'response') := .(as.factor(method), as.factor(data), as.factor(response))]
+@
+Small degree of freedom arises difficulties in studying the interaction between dataset and variable selection methods implemented on them. So, replications of complete study are created specifying different test and training sets. Since, 30 percent of observations are sampled randomly as a test set in NIR, Raman and Gene datasets, replications 2 and 3 has also implemented the same strategy. However, in the case of MALDI-TOF milk dataset, with constrained to keep replicates together, the second and third replicates are created by keeping 120 observations as training set starting from position 41 and 61 respectively. $R^2$ predicted for test observation from all replicated are used for further analysis (Figure - \ref{fig:testPlot}).
+
+<<testTblPrint, results='asis', eval = FALSE>>=
+test.xtbl <- xtable(test.r2[sample(nrow(test.r2), 5), .(replicates, method, data, response, model, rsq_pred)], align = "lrllXrr", 
+                    caption = "Five random sample observation from dataset with $R^2$ predicted for test",
+                    label = "tbl:testdf")
+print(test.xtbl, table.placement = "H", caption.placement = "top", tabular.environment = "tabularx", width = '0.8\\textwidth', include.rownames = F)
+@
+<<testPlot, fig.height=2.8, fig.cap="Boxplot for each data and method combination subdivided into their respective responses. Model from MCUVE in NIR and Raman data have drastically poor performance than other.">>=
+ggplot(test.r2, aes(data, rsq_pred, group = response, fill = response)) + 
+  geom_boxplot() + facet_wrap(~method, nrow = 1) + 
+  theme(legend.position = "top", 
+        legend.title = element_blank()) + 
+  guides(fill = guide_legend(nrow = 1)) + 
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(x = NULL, y = "R-sq Predicted")
+@
+
+Since each responses are confined to their respective datasets and we are specifically interested on the methods, a nested mixed effect model is adopted in this study as eq-\ref{eq:modelEq} where methods are kept fixed and the data and response nested on them are considered random, i.e each data and response nested on their respective dataset have different intercept. The model is written as,
+
+\begin{equation}
+\label{eq:modelEq}
+  y_{ijkl} = \mu + \alpha_{i} + \beta_{j} + (\alpha\beta)_{ij} + \gamma_{k(j)} + \epsilon_{ik(j)l}
+\end{equation}
+Where, $\epsilon \sim N(0, \sigma^2)$ and the random and fixed effects are assumed to satisfy following assumptions:
+\begin{align*}
+\sum_{i = 1}^5 {\alpha_i} &= 0 && \beta_{j} \sim N(0, \sigma_\beta^2) &&
+\gamma_{k(j)} \sim N(0, \sigma_{\gamma(\beta)}^2)
+\end{align*}
+Here, $i = 1, \ldots 5$ (Methods), $j = 1, \ldots, 4$ (Data), $k = 1, \ldots, n(j)$ (Response nested under data) and $l = 1, 2, 3$ (Replication)
+
+
+<<modelFitting, warning=FALSE, message=FALSE, results='hide'>>=
+test.r2[, log_rsq := log1p(rsq_pred * (1 - rsq_pred))]
+mdl1 <- lm(log_rsq ~ method * r(data) + response %in% r(data), data = test.r2)
+mdl2 <- lm(log_rsq ~ method * r(data) + response %in% r(data), data = test.r2, subset  = !(method == "mcuv" & data == "nir"))
+mdl3 <- lm(log_rsq ~ method * r(data) + response %in% r(data), data = test.r2, subset  = method != "mcuv")
+@
+
+
+<<anovaTbl, warning=FALSE, message=FALSE, results='hide'>>=
+mdl <- list(Model1 = mdl1, Model2 = mdl2, Model3 = mdl3)
+aovdf <- setnames(rbindlist(lapply(mdl, function(mdl){
+  aov.tbl <- as.data.table(data.frame(Anova(mdl, type = "III")$anova), 
+                         keep.rownames = T)
+  setnames(aov.tbl, "Pr..F.", "p.value")
+  return(na.omit(aov.tbl))
+}), idcol = TRUE), ".id", "Model")
+aovdf[, significance := ifelse(p.value <= 0.05, TRUE, FALSE)]
+
+mdlsumry <- setnames(as.data.table(t(sapply(mdl, function(mdl) {
+    list(sigma = summary(mdl)$sigma, rsq = summary(mdl)$r.squared, adj.rsq = summary(mdl)$adj.r.squared)
+})), keep.rownames = T), "rn", "Model")
+@
+<<rvfPlot, fig.height=2.5, warning=FALSE, message=FALSE, results='hide', fig.cap="Residuals vs Fitted Plot", fig.width='0.8\\textwidth', fig.pos='H'>>=
+op <- par(mfrow = c(1, 3))
+invisible(lapply(names(mdl), function(mdl.name) {
+  plot(mdl[[mdl.name]], 1, main = mdl.name)
+}))
+par(op)
+@
+
+On fitting the model in eq-\ref{eq:modelEq}, due to non homogeneous residuals and negative values in the response variable $R^2$ predicted, we transformed the response as, $\log\left[(p * (1 - p)) + 1\right]$. The transformed model shows that methods are significant while data are not however the residual vs fitted plot suggested three (20, 21 and 101) models all from using MCUVE method on NIR data as outlier. However, the significance of the factors did not change even without these outlier. The residual vs fitted plot from the second model suggested 3 models (63, 19 and 103) which still are from using MCUVE method. Finally, a model without MCUVE method is fitted which has suggested that there is not any significance difference between different data and different methods but there is significant interaction between them.
+
+
+<<anovaPlot, fig.height=3, fig.cap="Plot from Anova table. Number on top of each bars are p-value", fig.pos='H'>>=
+ggplot(aovdf, aes(rn, F.value, fill = significance)) + 
+  geom_bar(stat = "identity", na.rm = TRUE, position = "dodge") + 
+  facet_grid(.~Model) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top") + 
+  geom_text(aes(label = round(p.value, 3)), nudge_y = 10, 
+            family = "mono", size = rel(3), na.rm = T) + 
+  scale_fill_brewer(palette = "Set1", direction = -1) +
+  labs(x = NULL)
+@
+\section{Conclusion}
+Results from ANOVA, plotted in figure - \ref{fig:anovaPlot}, was expected since the MCUVE method of variables selection has selected few variables and has lost considerable amount of information. However, Model 3, without MCUVE method, shows that the variables selection methods performs differently on different nature of dataset (significant interaction between method and data). Furthermore, in all three models, the response which is nested under data are significant, i.e. responses for given data are significantly different.
+
+On this comparison of variable selection methods, we found that there is no significance difference in variable selection methods apart from MCUVE which is rather conservative in selecting variables. However, the methods can perform differently according the nature of data. So, it is desirable to test the performance of variable selection before implementing them on any analysis.

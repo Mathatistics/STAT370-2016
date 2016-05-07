@@ -1,0 +1,66 @@
+% !Rnw root = Main.Rnw
+\subsection{Linear Discriminent Analysis}
+Assuming equal variance for each group, LDA attempts to classify/ discriminate the response $\mathbf{y}$ using a log-odd function, linear on $\mathbf{X}$, i.e, LDA decision boundaries are linear (\cite{friedman2001elements}). Subjects with and without tumor, in Gene Expression data are classified using a LDA model from PLS scores. The number of components is obtained from a cross-validation technique, as in figure - \ref{fig:classifyPlot}, which integrates LDA and PCA to obtain optimized number of components that minimize the misclassification error. The first Linear Discriminant score plotted for training and testset for their prediction (fig - \ref{classifyPlot} (right)) shows that the model has classified the presence of tumor with high accuracy.
+
+<<classify>>=
+gene$min.comp <- gene$r2$max.correct.prop[estimate == "CV", comp]
+gene$test.pred <- getPredicted(gene$plda, newdata = data$gene$GeneExpr[!data$gene$train,], 
+             ncomp = gene$min.comp, newY = data$gene$tumor[!data$gene$train])
+@
+
+<<classifyPlot, message=FALSE>>=
+plt1 <- ggplot(data.table(gene$test.pred$test.pred$x, gene$test.pred$test.pred$class), aes(LD1, fill = V2, color = V2)) + 
+  geom_density(alpha = 0.5) + scale_color_discrete(l = 40, name = "Test:") + 
+  scale_fill_discrete(name = "Test:") + theme_bw(base_size = 18) +
+  theme(legend.position = "top") + labs(x = 'LD1', y = 'Density')
+plt2 <- ggplot(data.table(gene$test.pred$train.pred$x, gene$test.pred$train.pred$class), aes(LD1, fill = V2, color = V2)) + 
+  geom_density(alpha = 0.5) + scale_color_discrete(l = 40, name = "Train:") + 
+  scale_fill_discrete(name = "Train:") + theme_bw(base_size = 18) +
+  theme(legend.position = "top") + labs(x = 'LD1', y = 'Density')
+plt <- plot_grid(plt1, plt2, ncol = 1)
+ggsave(file = "figure/classifPlot.pdf", plot = plt, width = 5, height = 7)
+@
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[t]{0.7\textwidth}
+    \resizebox{\linewidth}{2.8in}{
+    \begin{tikzpicture}[
+    rectNode/.append style = {draw, rectangle, minimum height = 1cm, minimum width = 1cm},
+    myArrow/.append style = {->, >=latex, dashed},
+    node distance = 0.8cm,
+    scale = 0.7
+    ]
+      \node[rectNode, label = {[name = cvTestLabel]cvTest}] (cvtest) {$j$};
+      \node[rectNode, right = of cvtest, label = cvTrain] (cvtrain) {$1,\ldots j-1, j+1, \ldots, 10$};
+      
+      \node[rectNode, below = of cvtrain](models) {Partial Least Squares Model};
+      \node[rectNode, right = of models, label = Scores](scores) {1, 2, \ldots, };
+      
+      \node[rectNode, below = of models.195, text width = 5cm, rectangle split, rectangle split parts=2, label = {[text width = 5cm, align = center, name = ldaDataLabel]below:{\small Loop over each additional scores}}](ldaData) {
+      $y =$ \texttt{tumor}, \\$X = $ \texttt{scores} from $1$ to $i$
+      	\nodepart{second}
+      	LDA Model: $y = f(X)$
+      	};
+      
+      \node[text width = 3.5cm, align = center, rectNode, below = of scores, label = {[text width = 3.5cm, align = center, name = errorLabel]below:{\footnotesize For $i^{th}$ Scores \vspace{-3pt} \\ \footnotesize and $j^{th}$ cv split}}](error){Misclassificaton Error\\(cvTest and Train)};
+      
+      \node[fit=(cvTestLabel)(errorLabel)(error)(ldaData)(ldaDataLabel)(scores), draw, label = below:{Cross-validation Loop on Training set of Gene Expression Data}] {};
+      
+      %% Arrows
+      
+      \draw[myArrow] (cvtest.south) -- (cvtest |- ldaData.north);
+      \draw[myArrow] (cvtrain) -- (models);
+      \draw[myArrow] (models) -- (scores);
+      \draw[myArrow] (scores.south) -- ++(0pt, -3mm)  -| (ldaData.north);
+      \draw[myArrow] (ldaData.east) |- (error);
+    \end{tikzpicture}
+    }
+\end{subfigure}
+\hfill
+\begin{subfigure}[t]{0.25\textwidth}
+    \includegraphics[height = 2.8in]{figure/classifPlot}
+\end{subfigure}
+\caption{(left) Cross Validation with LDA integrated within PLS model for classification problem in Gene Expression Data (right) Test and Training classification}
+\label{fig:cvloop}
+\end{figure}
